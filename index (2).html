@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Classic Memories — iPhone</title>
+<style>
+:root{--bg:#000;--panel:#111;--line:#2a2a2a;--text:#fff;--muted:#8c8c8c;--gap:7px;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Helvetica,Arial,sans-serif}
+.app{max-width:900px;margin:auto;padding:calc(env(safe-area-inset-top) + 12px) 12px calc(env(safe-area-inset-bottom) + 36px)}
+.panel{position:sticky;top:0;z-index:10;background:rgba(0,0,0,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);margin:0 -12px 14px;padding:10px 12px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+input[type=text]{width:100%;min-width:0;border:1px solid var(--line);background:#151515;color:#fff;border-radius:10px;padding:11px 12px;font-size:16px;outline:none}
+button,.pick{border:0;border-radius:10px;padding:11px 12px;font-size:15px;font-weight:650;text-align:center;background:#f2f2f2;color:#111}
+button.secondary{background:#171717;color:#fff;border:1px solid #303030}
+button:disabled{opacity:.4}
+.pick input{display:none}
+.status{font-size:12px;color:var(--muted);line-height:1.45;margin-top:2px}
+.progress{height:4px;background:#1b1b1b;border-radius:999px;overflow:hidden;margin-top:8px;display:none}
+.progress>div{height:100%;width:0;background:#fff;transition:width .1s linear}
+.titlewrap{text-align:center;padding:10px 0 18px}
+.title{font-size:20px;font-weight:700;line-height:1.05;letter-spacing:-.02em}
+.year{font-size:16px;font-weight:500;color:#d6d6d6;margin-top:3px}
+.grid{columns:3;column-gap:var(--gap)}
+.tile{break-inside:avoid;margin:0 0 var(--gap);border-radius:var(--r);overflow:hidden;background:#111}
+.tile img{width:100%;height:auto;display:block}
+.empty{min-height:48vh;display:grid;place-items:center;text-align:center;color:#777;padding:32px;font-size:15px;line-height:1.55}
+.note{text-align:center;color:#626262;font-size:12px;margin-top:20px}
+@media(max-width:430px){.app{padding-left:8px;padding-right:8px}.panel{margin-left:-8px;margin-right:-8px;padding-left:8px;padding-right:8px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="panel">
+    <div class="row">
+      <input id="title" type="text" value="Summer" aria-label="Title">
+      <input id="year" type="text" value="2025" aria-label="Year">
+    </div>
+    <div class="row">
+      <label class="pick">1. Select Photos
+        <input id="picker" type="file" accept="image/*,.heic,.heif" multiple>
+      </label>
+      <button id="build" disabled>2. Generate</button>
+    </div>
+    <div class="row" style="margin-bottom:0">
+      <button id="export" disabled>3. Export PNG</button>
+      <button id="clear" class="secondary" disabled>Clear</button>
+    </div>
+    <div id="status" class="status">Select photos first. Nothing is uploaded.</div>
+    <div id="prog" class="progress"><div id="bar"></div></div>
+  </div>
+
+  <div class="titlewrap">
+    <div id="titleView" class="title">Summer</div>
+    <div id="yearView" class="year">2025</div>
+  </div>
+
+  <div id="empty" class="empty">
+    Select a batch of photos, then tap <b>Generate</b>.<br><br>
+    This version makes smaller local previews first so large iPhone photo batches are less likely to freeze.
+  </div>
+  <div id="grid" class="grid" hidden></div>
+  <div class="note">Classic Memories-style grid · 3 columns · rounded corners · local only</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const picker=$('picker'), build=$('build'), exportBtn=$('export'), clearBtn=$('clear');
+const grid=$('grid'), empty=$('empty'), status=$('status'), prog=$('prog'), bar=$('bar');
+const title=$('title'), year=$('year'), titleView=$('titleView'), yearView=$('yearView');
+
+let selectedFiles=[];
+let previews=[];
+
+title.addEventListener('input',()=>titleView.textContent=title.value||' ');
+year.addEventListener('input',()=>yearView.textContent=year.value||' ');
+
+picker.addEventListener('change',()=>{
+  selectedFiles=[...picker.files];
+  previews=[];
+  grid.innerHTML='';
+  grid.hidden=true;
+  empty.hidden=false;
+  exportBtn.disabled=true;
+  build.disabled=!selectedFiles.length;
+  clearBtn.disabled=!selectedFiles.length;
+  if(selectedFiles.length){
+    status.textContent=`${selectedFiles.length} photo${selectedFiles.length===1?'':'s'} selected. Now tap Generate.`;
+  }else{
+    status.textContent='No photos selected.';
+  }
+});
+
+build.addEventListener('click', async ()=>{
+  if(!selectedFiles.length) return;
+  build.disabled=true; exportBtn.disabled=true;
+  previews=[]; grid.innerHTML=''; empty.hidden=true; grid.hidden=false;
+  prog.style.display='block'; bar.style.width='0%';
+
+  let failed=0;
+  for(let i=0;i<selectedFiles.length;i++){
+    const f=selectedFiles[i];
+    status.textContent=`Generating preview ${i+1}/${selectedFiles.length}…`;
+    bar.style.width=`${Math.round((i/selectedFiles.length)*100)}%`;
+    try{
+      const data=await makePreview(f,1200);
+      previews.push(data);
+      addTile(data.url,f.name);
+    }catch(e){
+      failed++;
+      console.warn('Skipped',f.name,e);
+    }
+    await nextFrame();
+  }
+  bar.style.width='100%';
+  setTimeout(()=>prog.style.display='none',400);
+  status.textContent=`Done: ${previews.length} photo${previews.length===1?'':'s'} ready${failed?`; ${failed} skipped (possibly unsupported HEIC/HEIF)`:''}.`;
+  exportBtn.disabled=!previews.length;
+  build.disabled=false;
+});
+
+clearBtn.addEventListener('click',()=>{
+  selectedFiles=[]; previews=[]; picker.value=''; grid.innerHTML='';
+  grid.hidden=true; empty.hidden=false;
+  build.disabled=true; exportBtn.disabled=true; clearBtn.disabled=true;
+  status.textContent='Select photos first. Nothing is uploaded.';
+  prog.style.display='none'; bar.style.width='0%';
+});
+
+function nextFrame(){return new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)))}
+
+function addTile(url,name){
+  const d=document.createElement('div'); d.className='tile';
+  const img=document.createElement('img'); img.src=url; img.alt=name||'photo';
+  d.appendChild(img); grid.appendChild(d);
+}
+
+async function makePreview(file,maxSide){
+  let bmp;
+  try{
+    bmp=await createImageBitmap(file);
+  }catch(e){
+    const url=URL.createObjectURL(file);
+    try{
+      const img=await new Promise((res,rej)=>{
+        const x=new Image(); x.onload=()=>res(x); x.onerror=rej; x.src=url;
+      });
+      bmp=img;
+    }finally{
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }
+  }
+  const w=bmp.width||bmp.naturalWidth, h=bmp.height||bmp.naturalHeight;
+  if(!w||!h) throw new Error('Unsupported image');
+  const scale=Math.min(1,maxSide/Math.max(w,h));
+  const cw=Math.max(1,Math.round(w*scale)), ch=Math.max(1,Math.round(h*scale));
+  const c=document.createElement('canvas'); c.width=cw; c.height=ch;
+  const ctx=c.getContext('2d',{alpha:false});
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,cw,ch);
+  ctx.drawImage(bmp,0,0,cw,ch);
+  if(bmp.close) bmp.close();
+  const blob=await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('Preview failed')),'image/jpeg',0.86));
+  const url=URL.createObjectURL(blob);
+  return {url,width:cw,height:ch};
+}
+
+function loadImage(url){
+  return new Promise((res,rej)=>{
+    const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=url;
+  });
+}
+
+function clipRound(ctx,x,y,w,h,r){
+  const rr=Math.min(r,w/2,h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+rr,y);
+  ctx.arcTo(x+w,y,x+w,y+h,rr);
+  ctx.arcTo(x+w,y+h,x,y+h,rr);
+  ctx.arcTo(x,y+h,x,y,rr);
+  ctx.arcTo(x,y,x+w,y,rr);
+  ctx.closePath();
+}
+
+exportBtn.addEventListener('click',async()=>{
+  if(!previews.length) return;
+  exportBtn.disabled=true;
+  exportBtn.textContent='Rendering…';
+  status.textContent='Rendering one long PNG…';
+  prog.style.display='block'; bar.style.width='5%';
+
+  try{
+    const W=1170, side=22, gap=9, colW=(W-side*2-gap*2)/3;
+    const top=60, titleBlock=125, gridTop=top+titleBlock+20, radius=18;
+    const cols=[gridTop,gridTop,gridTop], layout=[];
+    for(const p of previews){
+      const h=colW*(p.height/p.width);
+      let col=0; if(cols[1]<cols[col])col=1; if(cols[2]<cols[col])col=2;
+      const x=side+col*(colW+gap), y=cols[col];
+      layout.push({p,x,y,w:colW,h});
+      cols[col]+=h+gap;
+    }
+    const H=Math.ceil(Math.max(...cols)+35);
+    // iOS canvas height can be limited. Warn before trying something enormous.
+    if(H>16000){
+      throw new Error('too_tall');
+    }
+    const c=document.createElement('canvas'); c.width=W; c.height=H;
+    const ctx=c.getContext('2d',{alpha:false});
+    ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+    ctx.textAlign='center';
+    ctx.fillStyle='#fff'; ctx.font='700 52px -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif';
+    ctx.fillText(title.value||' ',W/2,top+42);
+    ctx.fillStyle='#d5d5d5'; ctx.font='500 39px -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif';
+    ctx.fillText(year.value||' ',W/2,top+91);
+
+    for(let i=0;i<layout.length;i++){
+      const L=layout[i], img=await loadImage(L.p.url);
+      ctx.save(); clipRound(ctx,L.x,L.y,L.w,L.h,radius); ctx.clip();
+      ctx.drawImage(img,L.x,L.y,L.w,L.h); ctx.restore();
+      bar.style.width=`${10+Math.round((i/layout.length)*80)}%`;
+      if(i%5===0) await nextFrame();
+    }
+
+    const blob=await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('PNG failed')),'image/png'));
+    bar.style.width='100%';
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`${(title.value||'Memory').trim().replace(/[^\w-]+/g,'_')}_${(year.value||'').trim()}_classic.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),15000);
+    status.textContent='Export ready. If iPhone opens the image instead, use Share → Save Image.';
+  }catch(e){
+    if(e.message==='too_tall'){
+      status.textContent='This batch is too tall for one iPhone canvas. Try fewer photos per export.';
+      alert('This batch is too tall for one iPhone image. Try fewer photos per export, such as 20–30 at a time.');
+    }else{
+      console.error(e);
+      status.textContent='Export failed. Try a smaller batch.';
+      alert('Export failed. Try fewer photos at once.');
+    }
+  }finally{
+    prog.style.display='none'; bar.style.width='0%';
+    exportBtn.disabled=false; exportBtn.textContent='3. Export PNG';
+  }
+});
+</script>
+</body>
+</html>
