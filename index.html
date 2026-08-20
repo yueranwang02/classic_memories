@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Memories">
+<link rel="manifest" href="./manifest.webmanifest">
 <title>Classic Memories</title>
 <style>
 :root{--bg:#000;--panel:#111;--line:#2a2a2a;--text:#fff;--muted:#8c8c8c;--gap:7px;--r:10px}
@@ -312,5 +317,16 @@ exportBtn.addEventListener('click',async()=>{
   }
 });
 </script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => {
+      console.warn('Service worker registration failed:', err);
+    });
+  });
+}
+</script>
+
 </body>
 </html>
